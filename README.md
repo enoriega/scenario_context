@@ -1,4 +1,4 @@
-# skema_timeinterval
+# Scenario Context Encoder-Decoder
 
 This project contains the necessary code to train a T5 model to extract specific details (hereafter called contents) related to a given input text (hereafter called text).
 The contents we are interested in are "location" and "time". 
