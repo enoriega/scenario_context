@@ -27,7 +27,7 @@ path=results/baseline-original/
 mkdir -p $path
 for seed in 1 2 3
 do
-    python -m src.all_srl_baseline --seed $seed  --use_original >> ${path}/baseline_results_${seed}.json
+    python -m src.all_srl_baseline --seed $seed  --use_original #>> ${path}/baseline_results_${seed}.json
     index=$((index + 1))
 done
 
