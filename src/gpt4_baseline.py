@@ -25,17 +25,17 @@ from src.parser_utils import get_parser
 
 import wandb
 
-from allennlp.predictors import Predictor
-import allennlp_models.tagging
+# from allennlp.predictors import Predictor
+# import allennlp_models.tagging
 import re
 import json
 from tqdm import tqdm
-import spacy
+# import spacy
 
-wandb.init(mode='disabled')
+# wandb.init(mode='disabled')
 
-nlp=spacy.load('en_core_web_sm')
-predictor = Predictor.from_path("structured-prediction-srl-bert.2020.12.15.tar.gz")
+# nlp=spacy.load('en_core_web_sm')
+# predictor = Predictor.from_path("structured-prediction-srl-bert.2020.12.15.tar.gz")
 
 
 def count(data):
@@ -56,88 +56,79 @@ def count(data):
 		}
 	}
 
-	event = data["event"]
-	event_words = {e.strip().lower() for e in event.split()}
+	try:
 	
-
-	preds = data.get("preds", {})
-	pred_words = {}
-	#See if the event is attached
-	event_attached = False
-	for k, v in preds.items():
-		if "ARGM" not in k:
-			for w in pred.split():
-				pred_words.add(w.strip().lower())
-				
-			if event in v:
-				event_attached = True
-				break
-
-	# First, LOC
-	
-	# If gold is missing and pred is missing, TN
-	if len(data["locations"]) == 0 and "ARGM-LOC" not in preds:
-		ret['loc']["tn"] += 1
-	# If gold is missing and there is a pred, FP
-	elif len(data["locations"]) == 0 and "ARGM-LOC" in preds:
-		ret['loc']["fp"] += 1
-	# If gold exists and pred is missing, FN
-	elif len(data["locations"]) > 0 and "ARGM-LOC" not in preds:
-		ret['loc']["fn"] += 1
-	else:
-		match = False
+		event = data["event"]
 		
-		# To check for agreement, if any of the  references match lets consider it a hit, this is lenient
-		pred = preds["ARGM-LOC"].lower().strip().replace(" ,", "")
-		for gt in data['locations']:
-			gt = gt.lower().strip()
 
-			match = gt in pred or pred in gt
-			if match:
-				break
+		preds = data.get("preds", {})
+		#See if the event is attached
+		event_attached = True
 
-
-		# If gold exists and pred is wrong, FP
-		if not match:
-			ret['loc']["fp"] += 1
-		# If gold exists and pred agree and the event is attached, TP
-		elif event_attached:
-			ret['loc']["tp"] += 1
+		# First, LOC
+		# If gold is missing and pred is missing, TN
+		if len(data["locations"]) == 0 and len(preds.get("locations", [])) == 0:
+			ret['loc']["tn"] += 1
+		# If gold is missing and there is a pred, FP
+		elif len(data["locations"]) == 0 and len(preds.get("locations", [])) > 0:
+			ret['loc']["fp"] += len(preds["locations"])
+		# If gold exists and pred is missing, FN
+		elif len(data["locations"]) > 0 and len(preds.get("locations", [])) == 0:
+			ret['loc']["fn"] += len(preds.get("locations", []))
 		else:
-			ret['loc']['fp'] += 1
+			# match = False
+			
+			for ref in data["locations"]:
+				for pred in preds.get("locations", []):
+					# To check for agreement, if any of the  references match lets consider it a hit, this is lenient
+					ref = ref.lower().strip().replace(",", "")
+					pred = pred.lower().strip().replace(",", "")
+					match = ref == pred#ref in pred or pred in ref
 
-	# Second, TMP
-	
-	# If gold is missing and pred is missing, TN
-	if len(data["temporals"]) == 0 and "ARGM-TMP" not in preds:
-		ret['tmp']["tn"] += 1
-	# If gold is missing and there is a pred, FP
-	elif len(data["temporals"]) == 0 and "ARGM-TMP" in preds:
-		ret['tmp']["fp"] += 1
-	# If gold exists and pred is missing, FN
-	elif len(data["temporals"]) > 0 and "ARGM-TMP" not in preds:
-		ret['tmp']["fn"] += 1
-	else:
-		match = False
+					# If gold exists and pred is wrong, FP
+					if not match:
+						ret['loc']["fp"] += 1
+					# If gold exists and pred agree and the event is attached, TP
+					else:
+						ret['loc']["tp"] += 1
+
+		# Second, TMP
 		
-		# To check for agreement, if any of the  references match lets consider it a hit, this is lenient
-		pred = preds["ARGM-TMP"].lower().strip().replace(" ,", "")
-		for gt in data['temporals']:
-			gt = gt.lower().strip()
+		# If gold is missing and pred is missing, TN
+		if "time_periods" in preds:
+			preds["time periods"] = preds["time_periods"]
 
-			match = gt in pred or pred in gt
-			if match:
-				break
-
-
-		# If gold exists and pred is wrong, FP
-		if not match:
-			ret['tmp']["fp"] += 1
-		# If gold exists and pred agree and the event is attached, TP
-		elif event_attached:
-			ret['tmp']["tp"] += 1
+		
+		# If gold is missing and pred is missing, TN
+		if len(data["temporals"]) == 0 and len(preds.get("time periods", [])) == 0:
+			ret['tmp']["tn"] += 1
+		# If gold is missing and there is a pred, FP
+		elif len(data["temporals"]) == 0 and len(preds.get("time periods", [])) > 0:
+			ret['tmp']["fp"] += len(preds["time periods"])
+		# If gold exists and pred is missing, FN
+		elif len(data["temporals"]) > 0 and len(preds.get("time periods", [])) == 0:
+			ret['tmp']["fn"] += len(data["temporals"])
 		else:
-			ret['tmp']["fp"] += 1
+			# match = False
+			
+			for ref in data["temporals"]:
+				for pred in preds.get("time periods", []):
+					try:
+						# To check for agreement, if any of the  references match lets consider it a hit, this is lenient
+						ref = ref.lower().strip().replace(",", "")
+						pred = pred.lower().strip().replace(",", "")
+						match = ref == pred #ref in pred or pred in ref
+
+						# If gold exists and pred is wrong, FP
+						if not match:
+							ret['tmp']["fp"] += 1
+						# If gold exists and pred agree and the event is attached, TP
+						else:
+							ret['tmp']["tp"] += 1
+					except:
+						pass
+	except:
+		pass
 
 	return ret
 
@@ -174,20 +165,6 @@ def compute(data):
 
 	return ret
 
-def split_sentences(text:str) -> Dict[Tuple[int, int], Tuple[int, str]]:
-	doc = nlp(text)
-	ret = {}
-	for ix, sent in enumerate(doc.sents):
-		ret[(sent.start_char, sent.end_char+1)] = (ix, sent.text)
-	return ret
-
-def get_sentence_from_char(ix:int, index:Dict[Tuple[int, int], Tuple[int, str]]) -> Tuple[int, str]:
-
-	for (a, b), s in index.items():
-		if a <= ix <= b:
-			return s
-		
-	raise Exception("Shouldn't fall in here")
 
 
 source_id2name = {
@@ -301,7 +278,7 @@ for t in test:
     paragraph = t['pre_context'] + t['text'] + t['post_context']
     # paragraph = paragraph.replace("\\n", " ").replace("\n", " ")
 
-    sents_index = split_sentences(paragraph)
+    # sents_index = split_sentences(paragraph)
 
     sstart = len(t['pre_context'])
     send = sstart + len(t['text'])
@@ -318,10 +295,12 @@ for t in test:
             else:
                 tmps.extend(vals)
 
-    sents = [x[1] for x in sorted({get_sentence_from_char(s, sents_index) for s in (sstart, send)}, key=lambda t: t[0])]
+    # sents = [x[1] for x in sorted({get_sentence_from_char(s, sents_index) for s in (sstart, send)}, key=lambda t: t[0])]
 
     new_test.append({
-        'sentence': "".join(sents),
+        # 'sentence': "".join(sents),
+        'pre_context': t['pre_context'],
+		'post_context': t['post_context'],
         'event': t['text'],
         'locations': locs,
         'temporals': tmps,
@@ -346,6 +325,55 @@ test = new_test
 #########################
 
 
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
+llm = ChatOpenAI(
+	base_url="https://llm1.cyverse.ai/v1",
+    # model="gpt-4o",
+    model="Mistral-7B-Instruct-v0.2",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+    api_key="...",
+    # base_url="...",
+    # organization="...",
+    # other params...
+)
+
+
+
+# prompt = ChatPromptTemplate.from_messages(
+#     [
+#         ("human", 	"""For the following phrase, look at the event or concept surrounded by ``` and tell me all the locations and time periods, relevant to the focused element.
+# 						The output format should be a json object with an array of strings for type of context. If there is not any element of a specific type, you will put an empty array in its value.
+# 						Output format:
+# 							{{
+# 								"locations": [],
+# 								"time periods": []
+# 							}}
+# 						Phrase:
+# 						{pre_context} ```{event}``` {post_context}"""),
+#     ]
+# )
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("human", 	"""For the following phrase, look at the event or concept surrounded by ``` and tell me  the locations and time periods that relevant to the element surrounded by ```.
+						The output format should be a json object with an array of strings for type of context. If there is not any element of a specific type, you will put an empty array in its value.
+						Output format:
+							{{
+								"locations": [],
+								"time periods": []
+							}}
+						Phrase:
+						{pre_context} ```{event}``` {post_context}"""),
+    ]
+)
+
+chain = prompt | llm | JsonOutputParser()
 
 
 
@@ -354,39 +382,34 @@ test = new_test
 ### START EVALUATING ###
 ######################
 
-def run_srl(sent):
+def run_gpt(data):
     """Returns a dictionary with all semantic role labels for an input sentence
        outputs a role-label : word dictionary structure.
     """
 
 
-    pred = predictor.predict(
-          sentence=sent)
+    preds = chain.invoke({
+         "pre_context": data["pre_context"],
+         "event": data["event"],
+         "post_context": data["post_context"],
+    })
     
-    dict_roles = dict()
-    temp = ''
-    a = nlp(sent)
-    root = [x.text for x in a if x.dep_ == 'ROOT'][0]
-    for each in pred['verbs']:
-        if each['verb'] == root:
-            temp = each['description']
-    roles_str = re.findall("\[(.*?)\]",temp)
-    
-    for each in roles_str:
-        vals=each.split(':')
-        dict_roles[vals[0]]=vals[1]
-    return dict_roles 
+    return preds
 
-for t in tqdm(test, desc="Running SRL"):
-    try:
-        preds = run_srl(t['sentence'])
-        t["preds"] = preds
-    except:
-        pass
+for t in tqdm(test, desc="Running GPT"):
+	try:
+		preds = run_gpt(t)
+		t["preds"] = preds
+	except:
+		pass
+
+
+# with open("gpt4.json") as f:
+# 	test = json.load(f)["data"]
 
 
 scores = compute(test)
-
+# print(scores)
 print(json.dumps({"data":test, "scores":scores}))
 
 ####################
